@@ -8,14 +8,11 @@ import json
 import os
 import time
 
-try:
-    from urllib.parse import urlparse
-except ImportError:  # pragma nocover
-    from urlparse import urlparse
+from urllib.parse import urlparse
 
 import six
 import http_ece
-import requests
+from utils import requests
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives import serialization
@@ -270,8 +267,8 @@ class WebPusher:
         return ("""curl -vX POST {url} \\\n{headers}{data}""".format(
             url=endpoint, headers="".join(header_list), data=data))
 
-    def send(self, data=None, headers=None, ttl=0, gcm_key=None, reg_id=None,
-             content_encoding="aes128gcm", curl=False, timeout=None):
+    async def send(self, data=None, headers=None, ttl=0, gcm_key=None, reg_id=None,
+                   content_encoding="aes128gcm", curl=False, timeout=None):
         """Encode and send the data to the Push Service.
 
         :param data: A serialized block of data (see encode() ).
@@ -365,26 +362,26 @@ class WebPusher:
         self.verb("\nSending request to"
                   "\n\thost: {}\n\theaders: {}\n\tdata: {}",
                   endpoint, headers, encoded_data)
-        resp = self.requests_method.post(endpoint,
-                                         data=encoded_data,
-                                         headers=headers,
-                                         timeout=timeout)
+        resp = await self.requests_method.post(endpoint,
+                                               data=encoded_data,
+                                               headers=headers,
+                                               timeout=timeout)
         self.verb("\nResponse:\n\tcode: {}\n\tbody: {}\n",
                   resp.status_code, resp.text or "Empty")
         return resp
 
 
-def webpush(subscription_info,
-            data=None,
-            vapid_private_key=None,
-            vapid_claims=None,
-            content_encoding="aes128gcm",
-            curl=False,
-            timeout=None,
-            ttl=0,
-            verbose=False,
-            headers=None,
-            requests_session=None):
+async def webpush(subscription_info,
+                  data=None,
+                  vapid_private_key=None,
+                  vapid_claims=None,
+                  content_encoding="aes128gcm",
+                  curl=False,
+                  timeout=None,
+                  ttl=0,
+                  verbose=False,
+                  headers=None,
+                  requests_session=None):
     """
         One call solution to endcode and send `data` to the endpoint
         contained in `subscription_info` using optional VAPID auth headers.
@@ -450,7 +447,7 @@ def webpush(subscription_info,
         # Remember, passed structures are mutable in python.
         # It's possible that a previously set `exp` field is no longer valid.
         if (not vapid_claims.get('exp')
-                or vapid_claims.get('exp') < int(time.time())):
+            or vapid_claims.get('exp') < int(time.time())):
             # encryption lives for 12 hours
             vapid_claims['exp'] = int(time.time()) + (12 * 60 * 60)
             if verbose:
@@ -474,9 +471,8 @@ def webpush(subscription_info,
             print("\t headers: {}".format(vapid_headers))
         headers.update(vapid_headers)
 
-    response = WebPusher(
-        subscription_info, requests_session=requests_session, verbose=verbose
-    ).send(
+    pusher = WebPusher(subscription_info, requests_session=requests_session, verbose=verbose)
+    response = await pusher.send(
         data,
         headers,
         ttl=ttl,
